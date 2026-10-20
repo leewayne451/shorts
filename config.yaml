@@ -6,7 +6,7 @@
 # ----------------------------------------------------------------------------
 groq:
   base_url: "https://api.groq.com/openai/v1/chat/completions"
-  model: "llama-3.3-70b-versatile"
+  model: "openai/gpt-oss-120b"
   temperature_script: 0.75
   temperature_factcheck: 0.2
   max_retries: 3
