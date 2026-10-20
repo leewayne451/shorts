@@ -1,0 +1,52 @@
+# series/zombie-outbreak/bible.yaml
+#
+# One bible per scenario. The slug must match the `topic` you pass on the
+# workflow_dispatch input (or the line in topics.txt). The LLM reads this file
+# as authoritative context in `script_stage.run_story`.
+
+title: "The First 24 Hours"
+premise: >
+  A strange flu spreads through a small coastal town. Within a day, the infected
+  stop responding to their names and start moving in slow, purposeful groups.
+  A nurse, a radio host, and a teenage delivery driver try to understand what is
+  happening before the roads close.
+tone: "suspenseful, cinematic, restrained horror, family-safe, no gore"
+must_include:
+  - the moment the first patient stops speaking
+  - a radio broadcast that cuts out mid-sentence
+  - the sound of a road being barricaded
+  - the three protagonists agreeing on a meeting point
+must_avoid:
+  - graphic violence or body horror
+  - named real-world diseases (no "rabies", "COVID", etc.)
+  - real cities, real hospitals, real broadcasters
+  - children in danger
+  - any implication that the outbreak is already global by chapter 12
+
+# Canonical cast. When present, this list OVERRIDES whatever the LLM invents.
+# `role` is not used by the renderer — it's just a hint for the LLM.
+cast:
+  - name: Mara
+    hair_style: bob
+    hair_color: brown
+    accessory: glasses
+    bust: true
+    role: nurse, the calm one
+  - name: Dev
+    hair_style: short
+    hair_color: black
+    accessory: beanie
+    bust: false
+    role: radio host, the skeptic
+  - name: Kit
+    hair_style: ponytail
+    hair_color: red
+    accessory: none
+    bust: true
+    role: teenage delivery driver, the runner
+  - name: The Infected
+    hair_style: short
+    hair_color: purple
+    accessory: none
+    bust: true
+    role: a faceless group, only shown one at a time

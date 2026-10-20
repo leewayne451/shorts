@@ -1,0 +1,84 @@
+name: generate
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+    inputs:
+      subject:
+        description: "Subject that vanishes (e.g. bees)"
+        required: false
+      topic:
+        description: "Alias for subject (kept for compatibility)"
+        required: false
+      dry_run:
+        description: "Skip Telegram send"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: generate
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
+      - name: Cache photo cache
+        uses: actions/cache@v4
+        with:
+          path: assets/photo_cache
+          key: photo-cache-${{ github.run_id }}
+          restore-keys: |
+            photo-cache-
+      - name: Download fonts
+        run: |
+          mkdir -p assets/fonts
+          test -f assets/fonts/Poppins-Bold.ttf || \
+            curl -fsSL -o assets/fonts/Poppins-Bold.ttf \
+              https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run generator
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SUBJECT_INPUT: ${{ inputs.subject }}
+          TOPIC_INPUT: ${{ inputs.topic }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          ARGS=""
+          if [ -n "$SUBJECT_INPUT" ]; then ARGS="--subject \"$SUBJECT_INPUT\""; fi
+          if [ -z "$SUBJECT_INPUT" ] && [ -n "$TOPIC_INPUT" ]; then ARGS="--topic \"$TOPIC_INPUT\""; fi
+          if [ "$DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          eval python -m whatif.run $ARGS
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whatif-run
+          path: |
+            runs/**/final.mp4
+            runs/**
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Commit used_subjects.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add used_subjects.json
+          git diff --cached --quiet || git commit -m "chore: update used_subjects.json [skip ci]"
+          git push

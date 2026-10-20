@@ -1,0 +1,198 @@
+# whatif-shorts — central configuration
+# Values here are safe defaults; override per-run with CLI flags where noted.
+
+# ----------------------------------------------------------------------------
+# LLM (Groq only)
+# ----------------------------------------------------------------------------
+groq:
+  base_url: "https://api.groq.com/openai/v1/chat/completions"
+  model: "llama-3.3-70b-versatile"
+  temperature_script: 0.75
+  temperature_factcheck: 0.2
+  max_retries: 3
+  timeout_seconds: 60
+  backoff_base_seconds: 2.0
+  backoff_max_seconds: 30.0
+
+# ----------------------------------------------------------------------------
+# Voice (edge-tts primary, espeak-ng fallback)
+# ----------------------------------------------------------------------------
+voice:
+  voice: "en-US-AvaNeural"
+  espeak_voice: "en-us+f3"
+  max_seconds_before_rate_bump: 37.0
+  max_rate_bump: "+15%"
+  max_shorten_attempts: 3
+  loudnorm_target_lufs: -16.0
+  trim_silence_threshold_db: -45.0
+
+# ----------------------------------------------------------------------------
+# Video
+# ----------------------------------------------------------------------------
+video:
+  width: 1080
+  height: 1920
+  fps: 30
+  target_seconds: 30.0
+  qa_min_seconds: 20.0
+  qa_max_seconds: 40.0
+  crf: 18
+  audio_bitrate: "192k"
+  safe_top_px: 220
+  safe_bottom_px: 300
+
+# ----------------------------------------------------------------------------
+# Style / colors
+# ----------------------------------------------------------------------------
+colors:
+  background: [0, 0, 0]
+  outline_white: [255, 255, 255]
+  character_fill: [0, 0, 0]
+  default_hair: [255, 208, 0]
+  hand_fill: [255, 204, 77]
+  hand_outline: [205, 130, 25]
+  hand_highlight: [255, 236, 179]
+  sick_green: [120, 200, 120]
+  caption_active: [255, 215, 0]      # yellow (current emphasis)
+  caption_secondary: [255, 140, 0]   # orange (secondary emphasis)
+  caption_white: [255, 255, 255]
+  caption_shadow: [0, 0, 0, 160]
+  time_label_fill: [20, 20, 20]
+  time_label_outline: [255, 255, 255]
+  icon_question_mark: [255, 215, 0]
+  icon_arrow: [80, 200, 255]
+  icon_sparkle: [255, 240, 120]
+  icon_no_sign: [230, 40, 40]
+  icon_clock: [180, 220, 255]
+
+# ----------------------------------------------------------------------------
+# Characters
+# ----------------------------------------------------------------------------
+characters:
+  bust_size: 1.0
+  outline_px: 15
+  head_diameter_px: 190
+  body_height_ratio: 1.6
+  body_neck_ratio: 0.4
+  body_base_ratio: 0.85
+  tilt_degrees: 3.0
+  blink_every_seconds: [2.5, 5.0]
+
+hair_colors:
+  - [255, 208, 0]     # default yellow
+  - [40, 40, 40]      # near-black
+  - [120, 72, 40]     # brown
+  - [200, 110, 60]    # ginger
+  - [230, 230, 230]   # silver
+  - [120, 200, 220]   # pastel blue
+  - [220, 120, 200]   # pastel pink
+  - [150, 110, 220]   # lavender
+
+accessory_colors:
+  - [255, 215, 0]     # yellow
+  - [255, 60, 60]     # red
+  - [60, 140, 255]    # blue
+  - [40, 200, 120]    # green
+  - [255, 255, 255]   # white
+  - [30, 30, 30]      # black
+
+# ----------------------------------------------------------------------------
+# Shake (event-driven, not beat-driven)
+# ----------------------------------------------------------------------------
+shake:
+  amplitude_px: 18
+  duration_ms: 250
+  envelope: "smooth_decay"   # "smooth_decay" | "linear"
+  max_per_video: 5
+
+# ----------------------------------------------------------------------------
+# Music (procedural, mysterious tone)
+# ----------------------------------------------------------------------------
+music:
+  bpm_range: [60, 80]
+  root_note_hz: 55.0          # A1
+  minor_scale_offsets: [0, 2, 3, 5, 7, 8, 10]
+  pad_detune_cents: 8
+  pad_lowpass_hz: 1200
+  sub_gain_db: -12.0
+  pad_gain_db: -18.0
+  tom_gain_db: -16.0
+  duck_db: -10.0
+  duck_attack_ms: 80
+  duck_release_ms: 300
+
+# ----------------------------------------------------------------------------
+# Channel / labels
+# ----------------------------------------------------------------------------
+channel_label_template: "WHAT IF {subject} VANISHED"
+
+# ----------------------------------------------------------------------------
+# Time ladder for consequence beats
+# ----------------------------------------------------------------------------
+time_ladder:
+  - "+1 hour"
+  - "+6 hours"
+  - "+1 day"
+  - "+1 week"
+  - "+1 month"
+  - "+1 year"
+required_time_labels:
+  - "+1 hour"
+  - "+1 day"
+
+# ----------------------------------------------------------------------------
+# Photos (Pixabay)
+# ----------------------------------------------------------------------------
+photos:
+  per_page: 10
+  min_width_px: 600
+  timeout_seconds: 15
+  max_retries: 2
+  backoff_base_seconds: 2.0
+  card_px_single: 520
+  card_px_dual: 420
+  card_px_multi: 340
+  card_outline_px: 12
+  card_corner_radius_ratio: 0.18
+  cache_dir: "assets/photo_cache"
+
+# ----------------------------------------------------------------------------
+# Captions
+# ----------------------------------------------------------------------------
+captions:
+  font_primary: "assets/fonts/Poppins-Bold.ttf"
+  font_fallback: "DejaVuSans-Bold.ttf"
+  font_url: "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf"
+  max_chars_per_line: 28
+  max_lines: 3
+  shadow_offset_px: 4
+  popin_overshoot: 1.12
+
+# ----------------------------------------------------------------------------
+# Telegram
+# ----------------------------------------------------------------------------
+telegram:
+  split_caption: true
+  caption_max_chars: 1024
+  api_base: "https://api.telegram.org"
+
+# ----------------------------------------------------------------------------
+# Schema constraints for the script stage
+# ----------------------------------------------------------------------------
+script_schema:
+  min_cast: 1
+  max_cast: 5
+  min_scenes: 4
+  max_scenes: 8
+  min_words_total: 55
+  max_words_total: 130
+  max_bench_per_scene: 2
+
+# ----------------------------------------------------------------------------
+# Paths
+# ----------------------------------------------------------------------------
+paths:
+  runs_dir: "runs"
+  assets_dir: "assets"
+  subjects_file: "subjects.txt"
+  used_subjects_file: "used_subjects.json"
