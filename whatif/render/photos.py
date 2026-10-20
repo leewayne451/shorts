@@ -5,11 +5,12 @@ Public API:
   load_image_skia(data: bytes) -> skia.Image | None
   center_crop_square(img) -> skia.Image
   draw_card(canvas, cfg, img, cx, cy, size_px, outline_px, t, popin_t0, popin_duration)
-  Credits are appended by the caller (engine) to credits.json.
+
+Sampling uses skia.Paint.setFilterQuality for compatibility across skia-python
+versions (kLow_FilterQuality is available on all 80+ releases; SamplingOptions is not).
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -39,9 +40,6 @@ class PhotoResult:
     cached: bool
 
 
-# ---------------------------------------------------------------------------
-# Slug / cache helpers
-# ---------------------------------------------------------------------------
 def _slug(query: str) -> str:
     s = query.strip().lower()
     s = re.sub(r"[^a-z0-9]+", "-", s)
@@ -52,9 +50,6 @@ def _cache_paths(cache_dir: Path, slug: str) -> tuple[Path, Path]:
     return (cache_dir / f"{slug}.bin", cache_dir / f"{slug}.json")
 
 
-# ---------------------------------------------------------------------------
-# Pixabay fetch
-# ---------------------------------------------------------------------------
 def _pixabay_search(query: str, cfg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     key = os.environ.get("PIXABAY_API_KEY", "").strip()
     if not key:
@@ -102,9 +97,7 @@ def _pick_hit(data: Dict[str, Any], min_width: int) -> Optional[Dict[str, Any]]:
     return hits[0] if hits else None
 
 
-def fetch_photo(
-    query: str, cfg: Dict[str, Any], cache_dir: Path
-) -> Optional[PhotoResult]:
+def fetch_photo(query: str, cfg: Dict[str, Any], cache_dir: Path) -> Optional[PhotoResult]:
     """Fetch (or read from cache) a photo for `query`. Returns None on any failure."""
     slug = _slug(query)
     bin_path, meta_path = _cache_paths(cache_dir, slug)
@@ -160,9 +153,6 @@ def fetch_photo(
     )
 
 
-# ---------------------------------------------------------------------------
-# skia decode / crop
-# ---------------------------------------------------------------------------
 def load_image_skia(data: bytes) -> Optional[skia.Image]:
     try:
         img = skia.Image.open(skia.Data.MakeWithCopy(data), encoded=True)
@@ -174,6 +164,15 @@ def load_image_skia(data: bytes) -> Optional[skia.Image]:
     return img
 
 
+def _bilinear_paint() -> skia.Paint:
+    p = skia.Paint(AntiAlias=True)
+    try:
+        p.setFilterQuality(skia.FilterQuality.kLow_FilterQuality)
+    except Exception:
+        pass
+    return p
+
+
 def center_crop_square(img: skia.Image) -> skia.Image:
     w, h = img.width(), img.height()
     side = min(w, h)
@@ -181,14 +180,12 @@ def center_crop_square(img: skia.Image) -> skia.Image:
     y = (h - side) // 2
     surface = skia.Surface(side, side)
     c = surface.getCanvas()
+    paint = _bilinear_paint()
     c.drawImage(img, skia.Rect.MakeXYWH(0, 0, side, side),
-                skia.Rect.MakeXYWH(x, y, side, side), skia.SamplingOptions())
+                skia.Rect.MakeXYWH(x, y, side, side), paint)
     return surface.makeImageSnapshot()
 
 
-# ---------------------------------------------------------------------------
-# Framed-card drawing
-# ---------------------------------------------------------------------------
 def draw_card(
     canvas: skia.Canvas,
     cfg: Dict[str, Any],
@@ -201,25 +198,20 @@ def draw_card(
     popin_t0: float,
     popin_duration: float = 0.35,
 ) -> None:
-    """Draw a rounded-square framed photo card at (cx,cy), center-anchored.
-
-    Pop-in uses an overshoot (1.12) over `popin_duration`. A gentle idle bob follows.
-    If `img` is None, draw a black card with a question_mark icon instead.
-    """
+    """Draw a rounded-square framed photo card at (cx,cy), center-anchored."""
     if t < popin_t0:
         return
     elapsed = t - popin_t0
     if elapsed < popin_duration:
         u = elapsed / popin_duration
-        # ease-out-back overshoot
         c1 = 1.70158
         c3 = c1 + 1.0
         eased = 1.0 + c3 * (u - 1) ** 3 + c1 * (u - 1) ** 2
         scale = 0.6 + 0.4 * eased + 0.12 * (eased - 1.0)
     else:
         scale = 1.0
-    # Idle bob (no beat bobbing)
-    bob = 4.0 * (0.5 + 0.5 * __import__("math").sin(2 * 3.14159 * 0.2 * t))
+    import math as _m
+    bob = 4.0 * (0.5 + 0.5 * _m.sin(2 * 3.14159 * 0.2 * t))
 
     canvas.save()
     canvas.translate(cx, cy + bob)
@@ -230,23 +222,19 @@ def draw_card(
     rect = skia.Rect.MakeXYWH(-half, -half, size_px, size_px)
     rrect = skia.RRect.MakeRectXY(rect, radius, radius)
 
-    # Clip + draw image (or fallback icon).
     canvas.save()
     clip = skia.Path()
     clip.addRRect(rrect)
     canvas.clipPath(clip, skia.ClipOp.kIntersect, True)
     if img is not None:
         sq = center_crop_square(img)
-        canvas.drawImageRect(
-            sq, skia.Rect.MakeWH(size_px, size_px),
-            skia.SamplingOptions(skia.FilterMode.kLinear),
-        )
+        paint = _bilinear_paint()
+        canvas.drawImageRect(sq, skia.Rect.MakeWH(size_px, size_px), paint)
     else:
         black = skia.Paint(AntiAlias=True, Color=skia.Color(0, 0, 0))
         canvas.drawRRect(rrect, black)
     canvas.restore()
 
-    # Outline
     white = cfg["colors"]["outline_white"]
     outline = skia.Paint(AntiAlias=True, Color=skia.Color(*white),
                          Style=skia.Paint.kStroke_Style, StrokeWidth=outline_px,

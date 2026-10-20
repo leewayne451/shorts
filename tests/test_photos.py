@@ -43,7 +43,7 @@ def test_api_failure_falls_back(monkeypatch, cfg, tmp_path):
     monkeypatch.setenv("PIXABAY_API_KEY", "dummy")
 
     def boom(*a, **k):
-        raise RuntimeError("network down")
+        raise photos.requests.RequestException("network down")
     monkeypatch.setattr(photos.requests, "get", boom)
     res = photos.fetch_photo("bees", cfg, tmp_path / "cache")
     assert res is None
@@ -67,7 +67,6 @@ def test_successful_fetch_and_cache_hit_makes_no_call(monkeypatch, cfg, tmp_path
         calls["n"] += 1
         if "pixabay.com/api" in url:
             return _FakeResp(200, hits)
-        # image download
         surface = skia.Surface(64, 64)
         surface.getCanvas().clear(skia.Color(200, 100, 50))
         data = surface.makeImageSnapshot().encodeToData()

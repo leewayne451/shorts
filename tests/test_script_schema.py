@@ -23,21 +23,27 @@ def _base():
         "index": 1, "time_label": "+1 hour", "scene_template": "timeline_step",
         "props": [{"type": "icon", "name": "clock"}],
         "cast_ids": ["c1"], "poses": {"c1": "present"}, "faces": {"c1": "open"},
-        "emphasis": [], "caption": "Within an hour, nothing pollinates.",
+        "emphasis": [],
+        "caption": ("Within a single hour, flowers sit unpollinated and orchards go quiet, "
+                    "while supermarket produce sections begin to show the first signs of stress."),
         "shake": False, "claims": [],
     }
     cons2 = {
         "index": 2, "time_label": "+1 day", "scene_template": "crowd_react",
         "props": [{"type": "icon", "name": "no_sign"}],
         "cast_ids": ["c1"], "poses": {"c1": "shrug"}, "faces": {"c1": "meh"},
-        "emphasis": [], "caption": "By day one, grocery shelves start to empty.",
+        "emphasis": [],
+        "caption": ("By the end of day one, almond and apple growers are calling emergency "
+                    "meetings, and by evening the first trucks of imported produce arrive."),
         "shake": False, "claims": [],
     }
     cons3 = {
         "index": 3, "time_label": "+1 week", "scene_template": "big_number",
         "props": [], "cast_ids": ["c1"], "poses": {"c1": "point"},
         "faces": {"c1": "smile"},
-        "emphasis": [], "caption": "By week one, prices for almonds double.",
+        "emphasis": [],
+        "caption": ("Within a week, prices for honey, almonds, and fresh fruit have climbed "
+                    "sharply and grocery shelves in major cities are visibly thinner."),
         "shake": False, "claims": [],
     }
     return {"title": "Bees", "opening_question": "What if bees vanished?",
@@ -65,7 +71,7 @@ def test_cast_size_bounds():
 
 def test_missing_required_time_labels_fails():
     s = _base()
-    del s["scenes"][2]  # removes "+1 day"
+    del s["scenes"][2]
     for i, sc in enumerate(s["scenes"]):
         sc["index"] = i
     with pytest.raises(ValidationError):
