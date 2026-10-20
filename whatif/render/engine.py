@@ -1,336 +1,221 @@
-"""Frame rendering engine.
+"""Render engine: draw frames with skia, pipe to ffmpeg, mux audio_mix.wav, write final.mp4.
 
-Short path (render):
-    Reads script.json (3 sentences, 3 beats) + 04_voice/words.json
-    Writes final.mp4
-
-Story path (render_story):
-    Reads story.json (N chapters, cast-driven) + 04_voice/words.json
-    Writes final.mp4 + clips/clip_NN.mp4 + clips.json
+Public API:
+  run(script, run_dir, cfg) -> dict
 """
 from __future__ import annotations
 
 import json
-import logging
+import math
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import skia
 
-from whatif.render import captions, photos, scenes
+from whatif import REPO_ROOT, get_logger, load_config
+from whatif.render import characters as char_mod
+from whatif.render import photos as photos_mod
+from whatif.render import scenes as scenes_mod
+from whatif.render import captions as captions_mod
 
-log = logging.getLogger(__name__)
+_LOG = get_logger("whatif.render.engine")
 
-
-# ---------------------------------------------------------------- shared
-def _cast_from_script(cfg: Dict[str, Any], script: Dict[str, Any]) -> List[Dict[str, Any]]:
-    out = []
-    palette = {k: tuple(v) for k, v in cfg["hair_colors"].items()}
-    for m in script["cast"]:
-        hair_color = palette.get(m.get("hair_color", "yellow"), (255, 208, 0))
-        out.append({
-            "name": m["name"],
-            "hair_style": m.get("hair_style", "bob"),
-            "hair_color": hair_color,
-            "accessory": m.get("accessory", "none"),
-            "accessory_color": (230, 40, 40),
-            "bust": bool(m.get("bust", True)),
-            "timeline": [(0.0, "idle")],
-        })
-    return out
+_FONT_TOP_LABEL_SIZE = 40
 
 
-def _emphasis_words(script: Dict[str, Any], beats: List[Dict[str, Any]],
-                    word_times: Dict[str, Any]) -> Dict[int, set]:
-    out: Dict[int, set] = {}
-    for bi, beat in enumerate(beats):
-        emph = {e.lower() for e in (beat.get("emphasis") or [])}
-        out[bi] = emph
-        times = []
-        for w in word_times.get("_words", []):
-            if w.get("sentence") == bi and w["word"].lower() in emph:
-                times.append(w["start"])
-        word_times[f"_emph_{bi}"] = times
-        sent_words = [w for w in word_times.get("_words", []) if w.get("sentence") == bi]
-        word_times[f"_show_{bi}"] = [sent_words[0]["start"]] if sent_words else [0.3]
-    return out
+def _top_label_text(cfg: Dict[str, Any], subject: str) -> str:
+    return str(cfg["channel_label_template"]).format(subject=subject).upper()
 
 
-def _preload_photos(cfg, beats, pixabay_key) -> tuple[dict, list]:
-    cache_dir = Path(cfg["photo"]["cache_dir"])
-    cards: Dict[str, Any] = {}
-    credits: List[Dict[str, Any]] = []
-    for beat in beats:
-        for prop in beat.get("props", []):
-            if prop.get("type") == "photo":
-                q = prop["query"]
-                if q in cards:
-                    continue
-                size = int(cfg["photo"]["card_size"])
-                cards[q] = photos.load_photo_card(q, cache_dir, pixabay_key, cfg, size)
-                got = photos.fetch_photo(q, cache_dir, pixabay_key, cfg)
-                if got:
-                    credits.append(got[1])
-    return cards, credits
+def _draw_top_label(canvas, cfg, text):
+    from whatif import REPO_ROOT
+    tf = skia.Typeface.MakeFromFile(str(REPO_ROOT / cfg["captions"]["font_primary"])) \
+        or skia.Typeface.MakeFromName(cfg["captions"]["font_fallback"], skia.FontStyle.Bold()) \
+        or skia.Typeface.MakeDefault()
+    font = skia.Font(tf, _FONT_TOP_LABEL_SIZE)
+    tw = font.measureText(text)
+    cx = cfg["video"]["width"] / 2.0
+    y = cfg["video"]["safe_top_px"] + _FONT_TOP_LABEL_SIZE
+    p = skia.Paint(AntiAlias=True, Color=skia.Color(255, 255, 255))
+    canvas.drawString(text, cx - tw / 2.0, y, font, p)
 
 
-# ================================================================ short path
-def render(cfg: Dict[str, Any], run_dir: Path, pixabay_key: Optional[str]) -> Path:
-    W = int(cfg["video"]["width"])
-    H = int(cfg["video"]["height"])
-    FPS = int(cfg["video"]["fps"])
-    DUR = float(cfg["video"]["duration"])
-    total_frames = int(round(DUR * FPS))
+def _scene_timings(script: Dict[str, Any], voice: Dict[str, Any],
+                   target_seconds: float) -> List[Dict[str, Any]]:
+    """Return per-scene [start,end] in seconds, derived from word timings."""
+    words = voice.get("words") or []
+    scenes = script["scenes"]
+    if not words:
+        # Fallback: even spacing.
+        n = len(scenes)
+        return [{"index": i, "start": target_seconds * i / n,
+                 "end": target_seconds * (i + 1) / n} for i in range(n)]
 
-    script = json.loads((run_dir / "script.json").read_text(encoding="utf-8"))
-    words = json.loads((run_dir / "04_voice" / "words.json").read_text(encoding="utf-8"))
-    audio = run_dir / "05_audio" / "mix.wav"
-    if not audio.exists():
-        raise FileNotFoundError(f"missing {audio}; run music stage first")
-
-    sentence_starts = [s[0] for s in words["sentences"]]
-    beats = script["beats"]
-
-    word_times: Dict[str, Any] = {"_words": words["words"]}
-    emphasis = _emphasis_words(script, beats, word_times)
-
-    cast = _cast_from_script(cfg, script)
-    # short path: one timeline per cast member from the beats
-    for ci, member in enumerate(cast):
-        tl = [(0.0, "idle")]
-        for bi, beat in enumerate(beats):
-            t_start = sentence_starts[bi] if bi < len(sentence_starts) else 0.0
-            t_end = sentence_starts[bi + 1] - 0.05 if bi + 1 < len(sentence_starts) else 9.9
-            pose = (beat.get("poses") or {}).get(member["name"], "idle")
-            tl.append((t_start + 0.45, pose))
-            tl.append((t_end, "idle"))
-        member["timeline"] = tl
-
-    cards, credits = _preload_photos(cfg, beats, pixabay_key)
-    photos.record_credits(run_dir, credits)
-
-    scene_assets = scenes.SceneAssets(
-        photos=cards, icons=[], beats=words["beats"],
-        word_times=word_times, cast=cast,
-        base_y=1570.0, prop_y=1190.0,
-    )
-    scene_draws = []
-    for beat in beats:
-        builder = scenes.BUILDERS.get(beat.get("scene", "intro_prop"), scenes.build_intro_prop)
-        scene_draws.append(builder(scene_assets, beat))
-
-    layout = captions.CaptionLayout(script, words["words"], emphasis)
-    label_text = cfg["layout"].get("channel_label", "STORIES")
-
-    out_path = run_dir / "final.mp4"
-    cmd = [
-        "ffmpeg", "-y", "-loglevel", "error",
-        "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
-        "-i", str(audio),
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-crf", str(cfg["video"].get("crf", 18)),
-        "-preset", cfg["video"].get("preset", "medium"),
-        "-c:a", "aac", "-b:a", "160k",
-        "-t", str(DUR), "-movflags", "+faststart",
-        str(out_path),
-    ]
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-    surf = skia.Surface(W, H)
-    cv = surf.getCanvas()
-
-    def current_scene_index(t: float) -> int:
-        idx = 0
-        for i, s in enumerate(sentence_starts):
-            if s <= t:
-                idx = i
-        return idx
-
-    for f in range(total_frames):
-        t = f / FPS
-        cv.clear(skia.Color(0, 0, 0, 255))
-        cv.save()
-        scene_draws[current_scene_index(t)](cv, t)
-        cv.restore()
-        captions.draw_channel_label(cv, label_text)
-        layout.draw(cv, t, sentence_starts)
-        proc.stdin.write(surf.makeImageSnapshot().toarray().tobytes())
-
-    proc.stdin.close()
-    proc.wait()
-    if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed with code {proc.returncode}")
-    log.info("Rendered %d frames -> %s", total_frames, out_path)
-    return out_path
-
-
-# ================================================================ story path
-def _chapter_word_times(all_words: List[Dict[str, Any]], ci: int,
-                        chapter_start: float) -> Dict[str, Any]:
-    """Build the word_times dict a story builder expects for chapter ci."""
-    ws = [w for w in all_words if w.get("chapter") == ci]
-    emph_global = set()
-    return {
-        "_words": ws,
-        "_chapter_start": [chapter_start],
-        "_chapter_words": ws,
-        # _emph is filled in by render_story once emphasis is known
-        "_emph": [],
-    }
-
-
-def _chapter_index_at(spans: List[List[float]], t: float) -> int:
-    idx = 0
-    for i, (a, _b) in enumerate(spans):
-        if a <= t:
-            idx = i
-    return idx
-
-
-def _split_clips(final: Path, spans: List[List[float]], clip_dir: Path) -> List[Dict[str, Any]]:
-    clip_dir.mkdir(parents=True, exist_ok=True)
+    # Map scene i to start time of its first caption word (scene 0 = t=0).
+    tokens = [(w["word"].lower().strip(".,!?;:"), float(w["start"])) for w in words]
     out: List[Dict[str, Any]] = []
-    for ci, (a, b) in enumerate(spans):
-        target = clip_dir / f"clip_{ci+1:02d}.mp4"
-        subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error",
-             "-ss", f"{a:.3f}", "-to", f"{b:.3f}",
-             "-i", str(final),
-             "-c", "copy", "-avoid_negative_ts", "make_zero",
-             str(target)],
-            check=True,
-        )
-        out.append({"index": ci, "file": str(target), "start": float(a), "end": float(b)})
+    cursor = 0
+    starts: List[float] = [0.0]
+    for scene in scenes[1:]:
+        cap_words = [t.lower() for t in scene["caption"].split() if t.strip()]
+        first = cap_words[0] if cap_words else ""
+        start = None
+        for j in range(cursor, len(tokens)):
+            if tokens[j][0] == first:
+                start = tokens[j][1]
+                cursor = j
+                break
+        starts.append(start if start is not None else starts[-1] + 2.0)
+
+    for i, s in enumerate(scenes):
+        start = starts[i]
+        end = starts[i + 1] if i + 1 < len(scenes) else target_seconds
+        out.append({"index": s["index"], "start": start, "end": end})
     return out
 
 
-def _chapter_caption_layout(chapter_sentences: List[str], all_words: List[Dict[str, Any]],
-                            chapter_start: float) -> "captions.CaptionLayout":
-    """Build a CaptionLayout scoped to one chapter.
-
-    We rewrite the word timings to be relative to chapter_start, and set the
-    caption sentence index to 0 because each chapter has exactly one layout.
-    """
-    scoped = []
-    for w in all_words:
-        scoped.append({
-            "word": w["word"],
-            "start": w["start"] - chapter_start,
-            "end": w["end"] - chapter_start,
-            "sentence": 0,
-        })
-    # caption layout expects a script-like dict with `sentences`
-    script = {"sentences": [" ".join(chapter_sentences)]}
-    emph = {0: set()}
-    return captions.CaptionLayout(script, scoped, emph)
+def _apply_shake(canvas, cfg, scene, t, scene_start) -> None:
+    if not scene.get("shake"):
+        return
+    skcfg = cfg["shake"]
+    dur = skcfg["duration_ms"] / 1000.0
+    elapsed = t - scene_start
+    if elapsed > dur:
+        return
+    u = max(0.0, min(1.0, elapsed / dur))
+    amp = float(skcfg["amplitude_px"]) * (1.0 - u)
+    # Deterministic pseudo-shake using scene index + time.
+    ang = (scene["index"] * 1.7 + t * 12.0)
+    canvas.translate(math.sin(ang) * amp, math.cos(ang * 1.3) * amp)
 
 
-def render_story(cfg: Dict[str, Any], run_dir: Path,
-                 pixabay_key: Optional[str] = None) -> Dict[str, Any]:
-    """Story mode: render the whole 4-5 min video and split at chapter boundaries."""
-    W = int(cfg["video"]["width"])
-    H = int(cfg["video"]["height"])
-    FPS = int(cfg["video"]["fps"])
-    total = float(cfg["story"]["total_duration"])
-    total_frames = int(round(total * FPS))
+def _load_photos(script, cfg) -> tuple[Dict[str, Optional[skia.Image]], List[Dict[str, str]]]:
+    cache_dir = REPO_ROOT / cfg["photos"]["cache_dir"]
+    images: Dict[str, Optional[skia.Image]] = {}
+    credits: List[Dict[str, str]] = []
+    for scene in script["scenes"]:
+        for prop in scene.get("props") or []:
+            if prop.get("type") != "photo":
+                continue
+            q = prop["query"]
+            if q in images:
+                continue
+            res = photos_mod.fetch_photo(q, cfg, cache_dir)
+            if res is None:
+                images[q] = None
+                credits.append({"query": q, "user": "", "page_url": "", "fallback": "question_mark"})
+                continue
+            images[q] = photos_mod.load_image_skia(res.image_bytes)
+            credits.append({"query": q, "user": res.user, "page_url": res.page_url})
+    return images, credits
 
-    story = json.loads((run_dir / "story.json").read_text(encoding="utf-8"))
-    words = json.loads((run_dir / "04_voice" / "words.json").read_text(encoding="utf-8"))
-    audio = run_dir / "05_audio" / "mix.wav"
-    if not audio.exists():
-        raise FileNotFoundError(f"missing {audio}; run music stage first")
 
-    if words.get("mode") != "story":
-        raise RuntimeError("words.json is not story mode; run voice stage with story.enabled=true")
-    chapter_spans = words["chapters"]
-    if len(chapter_spans) != len(story["chapters"]):
-        raise RuntimeError(
-            f"chapter count mismatch: story has {len(story['chapters'])}, "
-            f"voice produced {len(chapter_spans)}"
-        )
+def run(script: Dict[str, Any], run_dir: Path, cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    cfg = cfg or load_config()
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg not found. Install ffmpeg and retry.")
 
-    cast = _cast_from_script(cfg, story)
-    # no per-chapter timeline here: each chapter builds its own from poses
-    cast_by_name = {m["name"]: m for m in cast}
+    target = float(cfg["video"]["target_seconds"])
+    w = int(cfg["video"]["width"])
+    h = int(cfg["video"]["height"])
+    fps = int(cfg["video"]["fps"])
+    total_frames = int(round(target * fps))
 
-    # preload photos (story path currently no photos, but keep it wired in case a
-    # chapter in the future adds a photo — cheap and harmless)
-    all_props = [p for ch in story["chapters"] for p in (ch.get("props") or [])]
-    cards, credits = _preload_photos(cfg, [{"props": all_props}], pixabay_key)
-    photos.record_credits(run_dir, credits)
+    voice = json.loads((run_dir / "voice.json").read_text(encoding="utf-8"))
+    audio_mix = run_dir / "audio_mix.wav"
+    if not audio_mix.is_file():
+        raise RuntimeError("audio_mix.wav not found; run the music stage first.")
 
-    # build one scene draw + one caption layout per chapter
-    chapter_draws: List[Dict[str, Any]] = []
-    for ci, ch in enumerate(story["chapters"]):
-        span = chapter_spans[ci]
-        wt: Dict[str, Any] = {
-            "_words": [w for w in words["words"] if w.get("chapter") == ci],
-            "_chapter_start": [span[0]],
-        }
-        # emphasis: first emphasized word in this chapter, if any
-        emph_words = {e.lower() for e in (ch.get("emphasis") or [])}
-        emph_times = [
-            w["start"] for w in words["words"]
-            if w.get("chapter") == ci and w["word"].lower() in emph_words
-        ]
-        wt["_emph"] = emph_times
+    photos, credits = _load_photos(script, cfg)
+    (run_dir / "credits.json").write_text(json.dumps(credits, indent=2, ensure_ascii=False),
+                                          encoding="utf-8")
+    fallbacks = [c["query"] for c in credits if c.get("fallback")]
+    (run_dir / "render_warnings.json").write_text(
+        json.dumps({"photo_fallbacks": fallbacks}, indent=2), encoding="utf-8"
+    )
 
-        assets = scenes.SceneAssets(
-            photos=cards, icons=[], beats=words["beats"],
-            word_times=wt, cast=cast,
-            base_y=1570.0, prop_y=1190.0,
-        )
-        builder = scenes.BUILDERS[ch["scene"]]
-        draw_fn = builder(assets, ch)
+    scene_times = _scene_timings(script, voice, target)
 
-        chapter_words = [w for w in words["words"] if w.get("chapter") == ci]
-        layout = _chapter_caption_layout(ch["sentences"], chapter_words, span[0])
-        chapter_draws.append({
-            "span": span,
-            "draw": draw_fn,
-            "layout": layout,
-            "sentences": ch["sentences"],
-        })
+    # Caption audit: for each scene, mark whether its caption will be rendered on screen.
+    audit = {"missing": []}
+    for s in script["scenes"]:
+        if not s.get("caption"):
+            audit["missing"].append(s["index"])
+    (run_dir / "captions_audit.json").write_text(json.dumps(audit, indent=2), encoding="utf-8")
 
-    label_text = cfg["layout"].get("channel_label", "STORIES")
-    out_path = run_dir / "final.mp4"
+    cast_by_id = {c["id"]: c for c in script["cast"]}
+    subject_label = _top_label_text(cfg, _extract_subject(script["opening_question"]))
+
+    out_mp4 = run_dir / "final.mp4"
     cmd = [
-        "ffmpeg", "-y", "-loglevel", "error",
-        "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
-        "-i", str(audio),
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-crf", str(cfg["video"].get("crf", 18)),
-        "-preset", cfg["video"].get("preset", "medium"),
-        "-c:a", "aac", "-b:a", "160k",
-        "-t", f"{total:.3f}", "-movflags", "+faststart",
-        str(out_path),
+        ffmpeg, "-y",
+        "-f", "rawvideo", "-pix_fmt", "bgra",
+        "-s", f"{w}x{h}", "-r", str(fps), "-i", "-",
+        "-i", str(audio_mix),
+        "-c:v", "libx264", "-preset", "medium", "-crf", str(int(cfg["video"]["crf"])),
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", str(cfg["video"]["audio_bitrate"]),
+        "-shortest", "-movflags", "+faststart",
+        str(out_mp4),
     ]
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-    surf = skia.Surface(W, H)
-    cv = surf.getCanvas()
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE)
 
-    for f in range(total_frames):
-        t = f / FPS
-        ci = _chapter_index_at(chapter_spans, t)
-        cd = chapter_draws[ci]
-        cv.clear(skia.Color(0, 0, 0, 255))
-        cv.save()
-        cd["draw"](cv, t)
-        cv.restore()
-        captions.draw_channel_label(cv, label_text)
-        # caption layout uses local time (t - chapter_start)
-        cd["layout"].draw(cv, t - cd["span"][0], [0.0])
-        proc.stdin.write(surf.makeImageSnapshot().toarray().tobytes())
+    surface = skia.Surface(w, h)
+    try:
+        for i in range(total_frames):
+            t = i / fps
+            canvas = surface.getCanvas()
+            canvas.clear(skia.Color(*cfg["colors"]["background"]))
 
-    proc.stdin.close()
-    proc.wait()
+            _draw_top_label(canvas, cfg, subject_label)
+
+            # Find active scene
+            active = scene_times[0]
+            for st in scene_times:
+                if st["start"] <= t < st["end"]:
+                    active = st
+                    break
+            scene = script["scenes"][active["index"]]
+
+            # Shake wraps scene drawing
+            canvas.save()
+            _apply_shake(canvas, cfg, scene, t, active["start"])
+            scenes_mod.render_scene(canvas, cfg, script, scene, cast_by_id, t,
+                                    active["start"], {"photos": photos})
+            canvas.restore()
+
+            # Caption line for this scene (per-beat)
+            placements = captions_mod.layout_line(scene["caption"],
+                                                  scene.get("emphasis") or [], cfg)
+            cap_cy = h - cfg["video"]["safe_bottom_px"] - 120
+            captions_mod.draw_caption_line(canvas, cfg, placements,
+                                           w / 2.0, cap_cy, active["start"] + 0.05, t)
+
+            arr = surface.makeImageSnapshot().toarray()
+            # skia surface toarray is RGBA; convert to BGRA
+            bgra = bytearray(arr.shape[0] * arr.shape[1] * 4)
+            bgra[0::4] = arr[:, :, 2].tobytes()
+            bgra[1::4] = arr[:, :, 1].tobytes()
+            bgra[2::4] = arr[:, :, 0].tobytes()
+            bgra[3::4] = arr[:, :, 3].tobytes()
+            proc.stdin.write(bytes(bgra))
+    finally:
+        proc.stdin.close()
+        stderr = proc.stderr.read().decode(errors="ignore") if proc.stderr else ""
+        proc.wait()
     if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed with code {proc.returncode}")
-    log.info("Rendered story: %d frames -> %s", total_frames, out_path)
+        raise RuntimeError(f"ffmpeg render failed ({proc.returncode}): {stderr[:600]}")
 
-    clip_dir = run_dir / cfg["story"].get("clip_dir_name", "clips")
-    clips = _split_clips(out_path, chapter_spans, clip_dir)
-    (run_dir / "clips.json").write_text(json.dumps(clips, indent=2), encoding="utf-8")
-    log.info("Split into %d clips in %s", len(clips), clip_dir)
+    _LOG.info("Render done: %s (%.1fs, %d frames)", out_mp4, target, total_frames)
+    return {"video_path": str(out_mp4), "duration_seconds": target,
+            "frames": total_frames, "photo_fallbacks": fallbacks}
 
-    return {"video": str(out_path), "clips": clips}
+
+def _extract_subject(opening_question: str) -> str:
+    import re
+    m = re.match(r"^\s*what\s+if\s+(.+?)\s+vanished\?\s*$", opening_question, re.I)
+    return m.group(1) if m else opening_question
