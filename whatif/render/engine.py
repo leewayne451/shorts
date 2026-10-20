@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 
 import skia
 
-from foodfacts.render import captions, photos, scenes
+from whatif.render import captions, photos, scenes
 
 log = logging.getLogger(__name__)
 
