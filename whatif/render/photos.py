@@ -6,8 +6,8 @@ Public API:
   center_crop_square(img) -> skia.Image
   draw_card(canvas, cfg, img, cx, cy, size_px, outline_px, t, popin_t0, popin_duration)
 
-Sampling uses skia.Paint.setFilterQuality for compatibility across skia-python
-versions (kLow_FilterQuality is available on all 80+ releases; SamplingOptions is not).
+Image scaling uses drawImageRect(sq, dstRect, paint) — available on all skia-python
+releases. drawImage(img, srcRect, dstRect) is not exposed on older wheels.
 """
 from __future__ import annotations
 
@@ -173,6 +173,24 @@ def _bilinear_paint() -> skia.Paint:
     return p
 
 
+def _draw_scaled(canvas: skia.Canvas, img: skia.Image,
+                 dst_left: float, dst_top: float,
+                 dst_w: float, dst_h: float,
+                 crop_x: float = 0.0, crop_y: float = 0.0,
+                 crop_w: float = 0.0, crop_h: float = 0.0) -> None:
+    """Draw `img` scaled/cropped into a destination rect, using only drawImageRect.
+
+    If crop_w/crop_h are zero, crop to the full image.
+    """
+    if crop_w <= 0:
+        crop_w = float(img.width())
+    if crop_h <= 0:
+        crop_h = float(img.height())
+    src = skia.Rect.MakeXYWH(crop_x, crop_y, crop_w, crop_h)
+    dst = skia.Rect.MakeXYWH(dst_left, dst_top, dst_w, dst_h)
+    canvas.drawImageRect(img, src, dst, _bilinear_paint())
+
+
 def center_crop_square(img: skia.Image) -> skia.Image:
     w, h = img.width(), img.height()
     side = min(w, h)
@@ -180,9 +198,8 @@ def center_crop_square(img: skia.Image) -> skia.Image:
     y = (h - side) // 2
     surface = skia.Surface(side, side)
     c = surface.getCanvas()
-    paint = _bilinear_paint()
-    c.drawImage(img, skia.Rect.MakeXYWH(0, 0, side, side),
-                skia.Rect.MakeXYWH(x, y, side, side), paint)
+    c.clear(skia.ColorTRANSPARENT)
+    _draw_scaled(c, img, 0, 0, side, side, crop_x=x, crop_y=y, crop_w=side, crop_h=side)
     return surface.makeImageSnapshot()
 
 
@@ -227,9 +244,12 @@ def draw_card(
     clip.addRRect(rrect)
     canvas.clipPath(clip, skia.ClipOp.kIntersect, True)
     if img is not None:
-        sq = center_crop_square(img)
-        paint = _bilinear_paint()
-        canvas.drawImageRect(sq, skia.Rect.MakeWH(size_px, size_px), paint)
+        w, h = img.width(), img.height()
+        side = min(w, h)
+        cx0 = (w - side) // 2
+        cy0 = (h - side) // 2
+        _draw_scaled(canvas, img, -half, -half, size_px, size_px,
+                     crop_x=cx0, crop_y=cy0, crop_w=side, crop_h=side)
     else:
         black = skia.Paint(AntiAlias=True, Color=skia.Color(0, 0, 0))
         canvas.drawRRect(rrect, black)

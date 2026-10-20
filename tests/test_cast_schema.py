@@ -7,18 +7,26 @@ from whatif import load_config
 from whatif.render import characters as char_mod
 
 
+def _serialize_path(path: skia.Path) -> bytes:
+    """skia.Path.serialize() -> skia.Data; convert to bytes for comparison."""
+    data = path.serialize()
+    if hasattr(data, "bytes"):
+        return data.bytes()
+    return bytes(data)
+
+
 def test_body_path_with_bust_differs_from_no_bust():
     cfg = load_config()
-    with_bust = char_mod.body_path(cfg, {"bust": True}).serialize().hex()
-    no_bust = char_mod.body_path(cfg, {"bust": False}).serialize().hex()
+    with_bust = _serialize_path(char_mod.body_path(cfg, {"bust": True}))
+    no_bust = _serialize_path(char_mod.body_path(cfg, {"bust": False}))
     assert with_bust != no_bust
 
 
 def test_bust_size_zero_equals_no_bust():
     cfg = load_config()
     cfg["characters"]["bust_size"] = 0.0
-    a = char_mod.body_path(cfg, {"bust": True}).serialize().hex()
-    b = char_mod.body_path(cfg, {"bust": False}).serialize().hex()
+    a = _serialize_path(char_mod.body_path(cfg, {"bust": True}))
+    b = _serialize_path(char_mod.body_path(cfg, {"bust": False}))
     assert a == b
 
 
