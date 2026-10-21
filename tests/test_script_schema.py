@@ -29,7 +29,7 @@ def _base():
         "shake": False, "claims": [],
     }
     cons2 = {
-        "index": 2, "time_label": "+1 day", "scene_template": "crowd_react",
+        "index": 2, "time_label": "+6 hours", "scene_template": "crowd_react",
         "props": [{"type": "icon", "name": "no_sign"}],
         "cast_ids": ["c1"], "poses": {"c1": "shrug"}, "faces": {"c1": "meh"},
         "emphasis": [],
@@ -38,7 +38,7 @@ def _base():
         "shake": False, "claims": [],
     }
     cons3 = {
-        "index": 3, "time_label": "+1 week", "scene_template": "big_number",
+        "index": 3, "time_label": "+1 day", "scene_template": "big_number",
         "props": [], "cast_ids": ["c1"], "poses": {"c1": "point"},
         "faces": {"c1": "smile"},
         "emphasis": [],
@@ -88,5 +88,20 @@ def test_unknown_prop_type_fails():
 def test_too_few_scenes_fails():
     s = _base()
     s["scenes"] = s["scenes"][:3]
+    with pytest.raises(ValidationError):
+        Script(**s)
+
+
+def test_duplicate_time_labels_fail():
+    s = _base()
+    s["scenes"][2]["time_label"] = "+1 hour"
+    with pytest.raises(ValidationError):
+        Script(**s)
+
+
+def test_time_labels_must_be_chronological():
+    s = _base()
+    s["scenes"][1]["time_label"] = "+1 day"
+    s["scenes"][3]["time_label"] = "+1 hour"
     with pytest.raises(ValidationError):
         Script(**s)

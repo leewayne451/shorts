@@ -221,13 +221,20 @@ class Script(BaseModel):
             if s.index != i:
                 raise ValueError(f"scene at position {i} has index {s.index}; indices must be 0..n-1 in order")
 
-        # time labels
+        # time labels must move forward through the timeline rather than behaving
+        # like an unordered list of related facts.
         for s in self.scenes[1:]:
             if s.time_label not in ladder:
                 raise ValueError(
                     f"scene {s.index} time_label {s.time_label!r} not in ladder {ladder}"
                 )
-        present = {s.time_label for s in self.scenes[1:]}
+        consequence_labels = [s.time_label for s in self.scenes[1:]]
+        if len(consequence_labels) != len(set(consequence_labels)):
+            raise ValueError("consequence time_label values must be unique")
+        label_positions = [ladder.index(label) for label in consequence_labels]
+        if label_positions != sorted(label_positions):
+            raise ValueError("consequence scenes must be ordered chronologically")
+        present = set(consequence_labels)
         for lab in required_labels:
             if lab not in present:
                 raise ValueError(f"at least one consequence scene must have time_label == {lab!r}")
@@ -284,20 +291,28 @@ class Script(BaseModel):
 # ---------------------------------------------------------------------------
 # Prompt building
 # ---------------------------------------------------------------------------
-_SYSTEM_PROMPT = """You are the scriptwriter for a vertical short-video series called
-"What if X vanished?". Each video is ~30 seconds and explores the consequences of a whole
-class of objects or animals suddenly disappearing.
+_SYSTEM_PROMPT = """You are the scriptwriter for a mysterious, cinematic vertical short-video
+series called "What If...?". Each video is ~30 seconds and follows a counterfactual as its
+consequences unfold over time.
 
 You MUST return a single strict JSON object. No prose, no code fences, no commentary.
 
-The video structure is:
-1. The opening question, always exactly: "What if <subject> vanished?"
-2. Then 3-7 consequence beats, each labeled with a time since the vanishing (e.g. "+1 hour",
-   "+1 day", "+1 week"), each showing a concrete consequence for ordinary people, acted out by
-   on-screen characters. The narrator is the only voice; characters react and act, they do not
-   speak.
+The video structure is a miniature mystery:
+1. Open with the exact premise as a question.
+2. +1 hour: show the first unsettling sign that something is wrong.
+3. +6 hours: escalate with a second-order consequence that people begin to notice.
+4. +1 day: reveal the larger danger or hidden dependency.
+5. Optionally continue with +1 week, +1 month or +1 year only if it creates a meaningful
+   aftermath. Every beat must advance time and deepen the situation.
 
-The tone is mysterious and slightly eerie, not upbeat. No jump scares, no gore.
+The narrator is the only voice; characters react and act, they do not speak.
+
+The tone is mysterious, tense and intriguing, like a documentary mystery or a scientific
+warning. Use vivid concrete images, unanswered questions and escalating consequences.
+Do not sound like a textbook, listicle, encyclopedia entry or weather report. Do not begin
+consequence captions with repetitive phrases such as "Within", "By the end", "Scientists
+say", or "Studies show". Avoid stacking unrelated facts. Each caption should feel like the
+next moment in one unfolding story.
 
 Subjects are semi-unrealistic counterfactuals: whole classes of objects or animals (e.g.
 "all cars", "bees", "the moon", "the internet", "all plastic", "all birds"). Not individual
@@ -344,7 +359,7 @@ JSON schema (all fields required unless noted):
       "poses": {"c1": "<pose>", ...},
       "faces": {"c1": "<face>", ...},
       "emphasis": ["<word>", ...],
-      "caption": "<one caption line for this beat, short enough to read in ~3 s>",
+      "caption": "<one suspenseful sentence for this moment, short enough to read in ~3 s>",
       "shake": true | false,
       "claims": ["<factual sub-claim the beat depends on, or [] if purely speculative>"]
     }
@@ -356,7 +371,8 @@ Hard rules:
 - opening_question MUST equal "What if <subject> vanished?" for the given subject.
 - The first scene has time_label "opening", scene_template "intro_prop", and caption equal to
   opening_question.
-- At least one consequence scene has time_label "+1 hour" and at least one has "+1 day".
+- Consequence labels MUST include "+1 hour", "+6 hours" and "+1 day", in that order.
+- Consequence labels must be unique and chronologically ordered.
 - Allowed time_labels: "+1 hour", "+6 hours", "+1 day", "+1 week", "+1 month", "+1 year".
 - 4 to 8 scenes total (opening + 3..7 consequences).
 - 1 to 5 cast members. Every consequence scene shows at least len(cast) - 2 cast members
@@ -369,14 +385,23 @@ Hard rules:
 - Poses: idle, present, point, pinch, shrug, think, wave, celebrate.
 - Faces: smile, grin, open, meh, ew, brows_angry, brows_raised, brows_worried, brows_flat.
 - Set shake=true only on dramatic consequence beats (max 5 across the video).
-- Consequence captions should be one short sentence each (roughly 8-18 words) suitable for
-  a single on-screen line.
+- Consequence captions should be one short, vivid sentence each (roughly 8-18 words) suitable
+  for a single on-screen line.
+- The "+1 hour" caption must show an observable first sign, not a general fact.
+- The "+6 hours" caption must escalate or reveal a second-order consequence.
+- The "+1 day" caption must contain the strongest reveal, danger or reversal in the story.
+- Across the consequence captions, use a progression such as: disturbance -> escalation ->
+  reveal -> aftermath. The captions must not read as interchangeable facts.
+- Prefer active verbs and specific visual actions: lights fail, queues form, walls tremble,
+  shelves empty, alarms spread, roads lock, nests emerge. Avoid abstract filler.
 """
 
 
 def _build_user_prompt(subject: str) -> str:
     return (
         f"Subject (the thing that vanishes): {subject!r}\n\n"
+        f"Write a suspenseful timeline, not a list of facts. Make each beat the next event "
+        f"in one escalating story, with the +1 day beat delivering the reveal. "
         f"Produce the JSON object now. "
         f"The opening_question must be exactly: \"What if {subject} vanished?\""
     )

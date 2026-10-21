@@ -1,6 +1,6 @@
 # whatif-shorts
 
-Automatically generates a ~30-second vertical (1080×1920, 30 fps) **"What if [X] vanished?"** short video every day. A hidden narrator asks the question, then walks through the consequences hour-by-hour and day-by-day while on-screen cartoon characters act out what happens.
+Automatically generates a ~30-second vertical (1080×1920, 30 fps) **"What if [X] vanished?"** short video every day. A hidden narrator asks the question, then follows a mysterious escalating timeline — +1 hour, +6 hours, +1 day and beyond — while on-screen cartoon characters act out what happens.
 
 Runs entirely on GitHub Actions. Requires a **free Groq API key**, a **free Pixabay API key**, and (optionally) a **Telegram bot** to receive the video for human approval.
 
@@ -9,7 +9,7 @@ Runs entirely on GitHub Actions. Requires a **free Groq API key**, a **free Pixa
 ## What it does
 
 1. Picks a subject from `subjects.txt` (whole classes of objects or animals — "bees", "all cars", "the moon").
-2. Asks Groq (Llama 3.3 70B) to write an opening question ("What if bees vanished?") and 3–7 consequence beats labeled "+1 hour", "+1 day", "+1 week"…
+2. Asks Groq to write an opening question ("What if bees vanished?") and 3–7 escalating consequence beats labeled "+1 hour", "+6 hours", "+1 day", "+1 week"…
 3. Fact-checks each claim against Wikipedia; on fail, picks a new subject.
 4. Narrates with edge-tts (voice `en-US-AvaNeural`, fallback espeak-ng).
 5. Generates a procedural **mysterious** music bed (minor key, 60–80 BPM) and ducks it under the voice.
