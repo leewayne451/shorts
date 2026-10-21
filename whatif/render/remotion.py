@@ -40,12 +40,15 @@ def _scene_starts(script: Dict[str, Any], voice: Dict[str, Any], duration: float
         first = str(scene.get("caption", "").split()[0] if scene.get("caption") else "")
         first = first.lower().strip(".,!?;:")
         found = None
-        for index in range(cursor, len(words)):
+        for index in range(cursor + 1, len(words)):
             if words[index][0] == first:
                 found = words[index][1]
                 cursor = index
                 break
-        starts.append(found if found is not None else min(duration, starts[-1] + 2.0))
+        fallback = duration * len(starts) / max(1, len(script["scenes"]))
+        candidate = found if found is not None else fallback
+        minimum = starts[-1] + min(0.25, duration / max(1, len(script["scenes"]) * 2))
+        starts.append(min(duration, max(minimum, candidate)))
     return starts
 
 
@@ -99,6 +102,9 @@ def run(
     target = float(cfg["video"]["target_seconds"])
     photos, _, fallbacks = _collect_photos(script, cfg, run_dir)
     scene_starts = _scene_starts(script, voice, target)
+    _LOG.info("Scene starts: %s", ", ".join(f"{start:.2f}s" for start in scene_starts))
+    music_meta_path = run_dir / "music.json"
+    music_meta = json.loads(music_meta_path.read_text(encoding="utf-8")) if music_meta_path.is_file() else {}
     audit = {"missing": [scene["index"] for scene in script["scenes"] if not scene.get("caption")]}
     (run_dir / "captions_audit.json").write_text(json.dumps(audit, indent=2), encoding="utf-8")
 
@@ -120,7 +126,7 @@ def run(
         "fps": int(cfg["video"]["fps"]),
         "durationSeconds": target,
         "channelLabel": channel,
-        "beats": [],
+        "beats": [float(beat) for beat in music_meta.get("beats", [])],
         "colors": {
             "background": "#000000",
             "outline": "#ffffff",
