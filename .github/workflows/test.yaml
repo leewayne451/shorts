@@ -16,6 +16,10 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
       - name: Install Python deps
@@ -28,5 +32,9 @@ jobs:
           test -f assets/fonts/Poppins-Bold.ttf || \
             curl -fsSL -o assets/fonts/Poppins-Bold.ttf \
               https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf
+      - name: Install Node deps
+        run: npm install
       - name: Run tests
-        run: pytest -q
+        run: |
+          npm run typecheck
+          pytest -q

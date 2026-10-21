@@ -89,6 +89,36 @@ python -m whatif.run --subject "bees"
 
 The output is `runs/<YYYYMMDD-HHMMSS>-what-if-<subject>-vanished/final.mp4`.
 
+### Remotion renderer
+
+The production renderer is Remotion + React. Python still owns script generation,
+fact-checking, narration, music, photo caching, orchestration, QA, and Telegram publishing.
+Before running a full generation locally, install Node.js 20 or newer and install the
+JavaScript dependencies:
+
+```powershell
+npm install
+python -m whatif.run --subject "bees" --dry-run
+```
+
+The Python render stage writes `remotion_manifest.json` in the run folder and invokes the
+`FoodFacts` composition from [`remotion/`](./remotion/).
+The composition uses layered SVG characters, reusable hand and hair components, animated
+photo cards, scene-level motion, easing, beat pulses, and timed captions. The older Skia
+helpers remain available for the renderer unit tests and as a compatibility fallback, but
+they are not used for production video output.
+
+To check the TypeScript renderer without generating a video:
+
+```powershell
+npm run typecheck
+```
+
+If Remotion reports a browser or bundled-asset error, run `npm install` again, verify that
+Node.js is on `PATH`, and check the generated `runs/<id>/remotion_manifest.json`. Audio is
+staged into Remotion's temporary public asset directory for the render and removed afterward;
+photo bytes are embedded in the manifest so the render does not make network requests.
+
 ---
 
 ## Expected cost

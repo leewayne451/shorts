@@ -113,6 +113,18 @@ def _load_photos(script, cfg) -> tuple[Dict[str, Optional[skia.Image]], List[Dic
 
 
 def run(script: Dict[str, Any], run_dir: Path, cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Render with Remotion.
+
+    The legacy Skia helpers remain available for unit tests and compatibility, but
+    production rendering is delegated to the React composition.
+    """
+    cfg = cfg or load_config()
+    from whatif.render import remotion
+    return remotion.run(script, run_dir, cfg)
+
+
+def run_skia(script: Dict[str, Any], run_dir: Path, cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Legacy Skia renderer retained as an explicit compatibility fallback."""
     cfg = cfg or load_config()
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:

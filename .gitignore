@@ -1,0 +1,5 @@
+node_modules/
+public/whatif-audio/
+__pycache__/
+*.py[cod]
+.pytest_cache/

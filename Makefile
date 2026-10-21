@@ -5,11 +5,14 @@ PYTHON ?= python
 SUBJECT ?=
 DRY_RUN ?=
 
-.PHONY: setup run run-topic test clean
+.PHONY: setup setup-node run run-topic test typecheck clean
 
 setup:
 	$(PYTHON) -m pip install --upgrade pip
 	$(PYTHON) -m pip install -r requirements.txt
+
+setup-node:
+	npm install
 
 run:
 ifndef SUBJECT
@@ -26,6 +29,9 @@ endif
 
 test:
 	$(PYTHON) -m pytest -q
+
+typecheck:
+	npm run typecheck
 
 clean:
 	rm -rf .pytest_cache
