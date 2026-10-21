@@ -7,9 +7,11 @@ on:
       subject:
         description: "Subject that vanishes (e.g. bees)"
         required: false
+        type: string
       topic:
         description: "Alias for subject (kept for compatibility)"
         required: false
+        type: string
       dry_run:
         description: "Skip Telegram send"
         type: boolean
@@ -63,15 +65,21 @@ jobs:
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SUBJECT_INPUT: ${{ inputs.subject }}
-          TOPIC_INPUT: ${{ inputs.topic }}
+          SUBJECT_INPUT: ${{ inputs.subject || inputs.topic }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          ARGS=""
-          if [ -n "$SUBJECT_INPUT" ]; then ARGS="--subject \"$SUBJECT_INPUT\""; fi
-          if [ -z "$SUBJECT_INPUT" ] && [ -n "$TOPIC_INPUT" ]; then ARGS="--topic \"$TOPIC_INPUT\""; fi
-          if [ "$DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
-          eval python -m whatif.run $ARGS
+          if [ -n "$SUBJECT_INPUT" ]; then
+            echo "Using manually supplied subject: $SUBJECT_INPUT"
+            if [ "$DRY_RUN" = "true" ]; then
+              python -m whatif.run --subject "$SUBJECT_INPUT" --dry-run
+            else
+              python -m whatif.run --subject "$SUBJECT_INPUT"
+            fi
+          elif [ "$DRY_RUN" = "true" ]; then
+            python -m whatif.run --dry-run
+          else
+            python -m whatif.run
+          fi
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

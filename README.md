@@ -32,7 +32,9 @@ Runs entirely on GitHub Actions. Requires a **free Groq API key**, a **free Pixa
 5. **Get a free Pixabay key**: <https://pixabay.com/api/docs/> → sign in → your key is on that page.
 6. **Create a Telegram bot** (optional): talk to [@BotFather](https://t.me/botfather) → `/newbot` → copy the token. Send any message to your new bot, then visit `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy the `chat.id`.
 7. In your repo: **Settings → Secrets and variables → Actions → New repository secret**. Add each of the four secrets (see table below).
-8. Go to **Actions → generate → Run workflow**, leave fields blank, click "Run workflow".
+8. Go to **Actions → generate → Run workflow**. Enter a value in the **Subject** field
+   (for example `the moon`) to override automatic selection, then click "Run workflow".
+   Leave it blank to use the next unused subject from `subjects.txt`.
 9. Wait ~5–10 minutes. The run's "Summary" page links to the artifact (download `final.mp4`).
 10. Once you're happy, the daily schedule (09:00 UTC) will keep generating a new video each day.
 
