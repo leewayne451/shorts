@@ -21,7 +21,7 @@ def _base():
     }
     cons1 = {
         "index": 1, "time_label": "+1 hour", "scene_template": "timeline_step",
-        "props": [{"type": "icon", "name": "clock"}],
+        "props": [{"type": "photo", "query": "flower field"}],
         "cast_ids": ["c1"], "poses": {"c1": "present"}, "faces": {"c1": "open"},
         "emphasis": [],
         "caption": ("Within a single hour, flowers sit unpollinated and orchards go quiet, "
@@ -30,7 +30,7 @@ def _base():
     }
     cons2 = {
         "index": 2, "time_label": "+6 hours", "scene_template": "crowd_react",
-        "props": [{"type": "icon", "name": "no_sign"}],
+        "props": [{"type": "photo", "query": "empty hive"}],
         "cast_ids": ["c1"], "poses": {"c1": "shrug"}, "faces": {"c1": "meh"},
         "emphasis": [],
         "caption": ("By the end of day one, almond and apple growers are calling emergency "
@@ -39,7 +39,8 @@ def _base():
     }
     cons3 = {
         "index": 3, "time_label": "+1 day", "scene_template": "big_number",
-        "props": [], "cast_ids": ["c1"], "poses": {"c1": "point"},
+        "props": [{"type": "photo", "query": "fruit market"}],
+        "cast_ids": ["c1"], "poses": {"c1": "point"},
         "faces": {"c1": "smile"},
         "emphasis": [],
         "caption": ("Within a week, prices for honey, almonds, and fresh fruit have climbed "
@@ -64,7 +65,7 @@ def test_opening_must_match_pattern():
 
 def test_cast_size_bounds():
     s = _base()
-    s["cast"] = []
+    s["cast"] = [{"id": f"c{i}", "name": "A"} for i in range(6)]
     with pytest.raises(ValidationError):
         Script(**s)
 
@@ -81,6 +82,13 @@ def test_missing_required_time_labels_fails():
 def test_unknown_prop_type_fails():
     s = _base()
     s["scenes"][1]["props"] = [{"type": "video", "url": "x"}]
+    with pytest.raises(ValidationError):
+        Script(**s)
+
+
+def test_every_scene_needs_a_stock_photo():
+    s = _base()
+    s["scenes"][1]["props"] = [{"type": "icon", "name": "clock"}]
     with pytest.raises(ValidationError):
         Script(**s)
 

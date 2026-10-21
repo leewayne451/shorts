@@ -181,7 +181,7 @@ telegram:
 # Schema constraints for the script stage
 # ----------------------------------------------------------------------------
 script_schema:
-  min_cast: 1
+  min_cast: 0
   max_cast: 5
   min_scenes: 4
   max_scenes: 8

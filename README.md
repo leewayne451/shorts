@@ -1,6 +1,6 @@
 # whatif-shorts
 
-Automatically generates a ~30-second vertical (1080×1920, 30 fps) **"What if [X] vanished?"** short video every day. A hidden narrator asks the question, then follows a mysterious escalating timeline — +1 hour, +6 hours, +1 day and beyond — while on-screen cartoon characters act out what happens.
+Automatically generates a ~30-second vertical (1080×1920, 30 fps) **"What if [X] vanished?"** short video every day. A hidden narrator asks the question, then follows a mysterious escalating timeline — immediately, +1 hour, +6 hours, +1 day and beyond — over relevant stock-photo scenes.
 
 Runs entirely on GitHub Actions. Requires a **free Groq API key**, a **free Pixabay API key**, and (optionally) a **Telegram bot** to receive the video for human approval.
 

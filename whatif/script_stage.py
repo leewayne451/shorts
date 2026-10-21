@@ -248,6 +248,8 @@ class Script(BaseModel):
             unknown = [cid for cid in s.cast_ids if cid not in cast_ids]
             if unknown:
                 raise ValueError(f"scene {s.index} references unknown cast ids: {unknown}")
+            if not any(p.get("type") == "photo" for p in s.props):
+                raise ValueError(f"scene {s.index} must include a related stock photo")
             if len(s.cast_ids) > len(self.cast):
                 raise ValueError(f"scene {s.index} shows more characters than exist in cast")
             if not s.cast_ids and (s.poses or s.faces):
@@ -335,17 +337,17 @@ JSON schema (all fields required unless noted):
       "accessory_color_idx": <0..5>,
       "bust": true | false
     }
-    // 1 to 5 cast members, unique ids. The first is the main character.
+    // Optional cast for beats where a human reaction helps explain the event.
   ],
   "scenes": [
     {
       "index": 0,
       "time_label": "opening",
       "scene_template": "intro_prop",
-      "props": [{"type": "photo", "query": "<2-4 word noun phrase>"}],
-      "cast_ids": ["c1"],   // use [] when characters would be distracting or unnecessary
-      "poses": {"c1": "present"},
-      "faces": {"c1": "smile"},
+      "props": [{"type": "photo", "query": "<2-4 word related stock-photo query>"}],
+      "cast_ids": [],
+      "poses": {},
+      "faces": {},
       "emphasis": ["<word>", ...],
       "caption": "What if <subject> vanished?",
       "shake": false,
@@ -356,10 +358,10 @@ JSON schema (all fields required unless noted):
       "time_label": "+1 hour",
       "scene_template": "timeline_step" | "crowd_react" | "two_reactors"
                         | "two_props_compare" | "big_number",
-      "props": [{"type": "photo"|"icon", ...}],
-      "cast_ids": ["c1", "c2", ...],   // subset of cast, or [] for a props-only scene
-      "poses": {"c1": "<pose>", ...},
-      "faces": {"c1": "<face>", ...},
+      "props": [{"type": "photo", "query": "<2-4 word related stock-photo query>"}],
+      "cast_ids": [],   // use characters only when a human reaction is essential
+      "poses": {},
+      "faces": {},
       "emphasis": ["<word>", ...],
       "caption": "<one suspenseful sentence for this moment, short enough to read in ~3 s>",
       "shake": true | false,
@@ -377,11 +379,11 @@ Hard rules:
 - Consequence labels must be unique and chronologically ordered.
 - Allowed time_labels: "+1 hour", "+6 hours", "+1 day", "+1 week", "+1 month", "+1 year".
 - 4 to 8 scenes total (opening + 3..7 consequences).
-- 1 to 5 cast members. Each scene may show a subset of the cast, or no characters when
-  the beat is better shown through props, photos, icons or an environment.
+- 0 to 5 cast members. Prefer an empty cast and props-only scenes for this series.
 - Total narration words across opening_question + all consequence captions: 55 to 130.
-- Photo queries are 2-4 word plain-noun phrases describing a single object or animal. No
-  people, no brand names, no scene descriptions, no text.
+- Every scene must include at least one relevant photo prop. Photo queries must be 2-4
+  simple words describing a concrete object, animal or place related to that moment.
+  Use stock-photo search terms, not abstract ideas, sentences, people, brands or text.
 - Icon names are one of: question_mark, arrow, sparkle, no_sign, clock. Use no_sign on beats
   where the subject is gone.
 - Poses: idle, present, point, pinch, shrug, think, wave, celebrate.
@@ -389,6 +391,12 @@ Hard rules:
 - Set shake=true only on dramatic consequence beats (max 5 across the video).
 - Consequence captions should be one short, vivid sentence each (roughly 8-18 words) suitable
   for a single on-screen line.
+- Use simple everyday English that a child or non-native speaker can understand. Prefer
+  short subject-verb-object sentences. Avoid words such as "interdependent", "cascading",
+  "ecological", "infrastructure", "disruption", "subsequently" and "proliferate".
+- Make the timing explicit: the opening is what happens immediately, then describe what
+  happens 1 hour later, 6 hours later, 1 day later and at each later milestone. Start each
+  consequence caption with a clear time cue when possible.
 - The "+1 hour" caption must show an observable first sign, not a general fact.
 - The "+6 hours" caption must escalate or reveal a second-order consequence.
 - The "+1 day" caption must contain the strongest reveal, danger or reversal in the story.
@@ -396,11 +404,8 @@ Hard rules:
   reveal -> aftermath. The captions must not read as interchangeable facts.
 - Prefer active verbs and specific visual actions: lights fail, queues form, walls tremble,
   shelves empty, alarms spread, roads lock, nests emerge. Avoid abstract filler.
-- Choose characters only when they react to, discover, handle or physically demonstrate
-  something in the narration. Do not add random characters just to fill the frame.
-- For ecosystems, infrastructure, technology and global systems, prefer props-only scenes
-  unless a human reaction is specifically part of the beat. If cast_ids is [], poses and
-  faces must both be empty objects.
+- Do not add characters just to fill the frame. If no human action is important, return
+  an empty cast array and empty cast_ids, poses and faces for every scene.
 """
 
 
