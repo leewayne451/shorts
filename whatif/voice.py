@@ -161,7 +161,7 @@ def _ffmpeg_available() -> bool:
 
 
 def _normalize_and_trim(src: Path, dst: Path, cfg: Dict[str, Any]) -> None:
-    """Trim silence at both ends, normalize loudness with loudnorm, output 48 kHz mono PCM."""
+    """Trim leading silence and normalize without cutting pauses inside narration."""
     if not _ffmpeg_available():
         raise RuntimeError(
             "ffmpeg is required to normalize the voice track. Install ffmpeg and retry."
@@ -170,10 +170,9 @@ def _normalize_and_trim(src: Path, dst: Path, cfg: Dict[str, Any]) -> None:
     thresh = cfg["voice"]["trim_silence_threshold_db"]
     # Two-pass loudnorm would be ideal, but a single-pass is sufficient for shorts.
     af = (
-        f"silenceremove=start_periods=1:start_silence=0.05:start_threshold={thresh}dB:"
-        f"stop_periods=1:stop_silence=0.05:stop_threshold={thresh}dB,"
-        f"loudnorm=I={lufs}:TP=-1.5:LRA=11,"
-        f"aresample={_SAMPLE_RATE}"
+        f"silenceremove=start_periods=1:start_silence=0.05:start_threshold={thresh}dB,"
+        f"aresample={_SAMPLE_RATE},"
+        f"loudnorm=I={lufs}:TP=-1.5:LRA=11"
     )
     cmd = [
         "ffmpeg", "-y", "-i", str(src), "-af", af,

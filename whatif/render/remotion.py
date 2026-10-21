@@ -91,6 +91,9 @@ def run(
         raise RuntimeError("voice.json not found; run the voice stage first.")
     if not audio_path.is_file():
         raise RuntimeError("audio_mix.wav not found; run the music stage first.")
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg is required to mux audio into the Remotion video.")
 
     voice = json.loads(voice_path.read_text(encoding="utf-8"))
     target = float(cfg["video"]["target_seconds"])
@@ -145,6 +148,7 @@ def run(
             raise RuntimeError(f"Remotion render failed ({proc.returncode}): {detail[-1200:]}")
         if not output.is_file():
             raise RuntimeError(f"Remotion completed without creating {output}")
+        _mux_audio(ffmpeg, output, audio_path)
     finally:
         if public_audio_path.is_file():
             public_audio_path.unlink()
@@ -162,3 +166,20 @@ def _rgb_hex(value: Any) -> str:
     if not isinstance(value, (list, tuple)) or len(value) < 3:
         return "#FFFFFF"
     return "#{:02X}{:02X}{:02X}".format(int(value[0]), int(value[1]), int(value[2]))
+
+
+def _mux_audio(ffmpeg: str, video_path: Path, audio_path: Path) -> None:
+    """Replace the rendered container with a video-plus-audio MP4."""
+    muxed = video_path.with_suffix(".muxed.mp4")
+    command = [
+        ffmpeg, "-y", "-loglevel", "error",
+        "-i", str(video_path), "-i", str(audio_path),
+        "-map", "0:v:0", "-map", "1:a:0",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+        "-shortest", "-movflags", "+faststart", str(muxed),
+    ]
+    proc = subprocess.run(command, capture_output=True, text=True)
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(f"ffmpeg audio mux failed ({proc.returncode}): {detail[-1000:]}")
+    muxed.replace(video_path)
