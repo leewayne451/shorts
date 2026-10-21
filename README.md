@@ -10,6 +10,8 @@ Runs entirely on GitHub Actions. Requires a **free Groq API key**, a **free Pixa
 
 1. Picks a subject from `subjects.txt` (whole classes of objects or animals — "bees", "all cars", "the moon").
 2. Asks Groq to write an opening question ("What if bees vanished?") and 3–7 escalating consequence beats labeled "+1 hour", "+6 hours", "+1 day", "+1 week"…
+   The script also decides per scene whether characters add meaning; scenes can be props-only
+   when the subject is better represented by photos, icons, objects or environments.
 3. Fact-checks each claim against Wikipedia; on fail, picks a new subject.
 4. Narrates with edge-tts (voice `en-US-AvaNeural`, fallback espeak-ng).
 5. Generates a procedural **mysterious** music bed (minor key, 60–80 BPM) and ducks it under the voice.

@@ -248,12 +248,14 @@ class Script(BaseModel):
             unknown = [cid for cid in s.cast_ids if cid not in cast_ids]
             if unknown:
                 raise ValueError(f"scene {s.index} references unknown cast ids: {unknown}")
-            if not s.cast_ids:
-                raise ValueError(f"scene {s.index} must show at least one character")
             if len(s.cast_ids) > len(self.cast):
                 raise ValueError(f"scene {s.index} shows more characters than exist in cast")
+            if not s.cast_ids and (s.poses or s.faces):
+                raise ValueError(
+                    f"scene {s.index} has no characters but still defines poses or faces"
+                )
             benched = len(self.cast) - len(s.cast_ids)
-            if benched > max_bench:
+            if s.cast_ids and benched > max_bench:
                 raise ValueError(
                     f"scene {s.index} benches {benched} cast members; max is {max_bench}"
                 )
@@ -341,7 +343,7 @@ JSON schema (all fields required unless noted):
       "time_label": "opening",
       "scene_template": "intro_prop",
       "props": [{"type": "photo", "query": "<2-4 word noun phrase>"}],
-      "cast_ids": ["c1"],
+      "cast_ids": ["c1"],   // use [] when characters would be distracting or unnecessary
       "poses": {"c1": "present"},
       "faces": {"c1": "smile"},
       "emphasis": ["<word>", ...],
@@ -355,7 +357,7 @@ JSON schema (all fields required unless noted):
       "scene_template": "timeline_step" | "crowd_react" | "two_reactors"
                         | "two_props_compare" | "big_number",
       "props": [{"type": "photo"|"icon", ...}],
-      "cast_ids": ["c1", "c2", ...],   // subset of cast, 1..5
+      "cast_ids": ["c1", "c2", ...],   // subset of cast, or [] for a props-only scene
       "poses": {"c1": "<pose>", ...},
       "faces": {"c1": "<face>", ...},
       "emphasis": ["<word>", ...],
@@ -375,8 +377,8 @@ Hard rules:
 - Consequence labels must be unique and chronologically ordered.
 - Allowed time_labels: "+1 hour", "+6 hours", "+1 day", "+1 week", "+1 month", "+1 year".
 - 4 to 8 scenes total (opening + 3..7 consequences).
-- 1 to 5 cast members. Every consequence scene shows at least len(cast) - 2 cast members
-  (minimum 1).
+- 1 to 5 cast members. Each scene may show a subset of the cast, or no characters when
+  the beat is better shown through props, photos, icons or an environment.
 - Total narration words across opening_question + all consequence captions: 55 to 130.
 - Photo queries are 2-4 word plain-noun phrases describing a single object or animal. No
   people, no brand names, no scene descriptions, no text.
@@ -394,6 +396,11 @@ Hard rules:
   reveal -> aftermath. The captions must not read as interchangeable facts.
 - Prefer active verbs and specific visual actions: lights fail, queues form, walls tremble,
   shelves empty, alarms spread, roads lock, nests emerge. Avoid abstract filler.
+- Choose characters only when they react to, discover, handle or physically demonstrate
+  something in the narration. Do not add random characters just to fill the frame.
+- For ecosystems, infrastructure, technology and global systems, prefer props-only scenes
+  unless a human reaction is specifically part of the beat. If cast_ids is [], poses and
+  faces must both be empty objects.
 """
 
 

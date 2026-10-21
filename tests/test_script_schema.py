@@ -105,3 +105,20 @@ def test_time_labels_must_be_chronological():
     s["scenes"][3]["time_label"] = "+1 hour"
     with pytest.raises(ValidationError):
         Script(**s)
+
+
+def test_scene_can_be_props_only():
+    s = _base()
+    s["scenes"][1]["cast_ids"] = []
+    s["scenes"][1]["poses"] = {}
+    s["scenes"][1]["faces"] = {}
+    Script(**s)
+
+
+def test_props_only_scene_cannot_define_character_reactions():
+    s = _base()
+    s["scenes"][1]["cast_ids"] = []
+    s["scenes"][1]["poses"] = {}
+    s["scenes"][1]["faces"] = {"c1": "open"}
+    with pytest.raises(ValidationError):
+        Script(**s)
