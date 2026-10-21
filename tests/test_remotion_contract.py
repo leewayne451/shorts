@@ -23,3 +23,8 @@ def test_python_bridge_requires_audio_mux():
     source = (ROOT / "whatif" / "render" / "remotion.py").read_text(encoding="utf-8")
     assert "_mux_audio(ffmpeg, output, audio_path)" in source
     assert '"-map", "1:a:0"' in source
+
+
+def test_python_bridge_wraps_manifest_in_composition_props():
+    source = (ROOT / "whatif" / "render" / "remotion.py").read_text(encoding="utf-8")
+    assert 'json.dumps({"manifest": manifest}' in source

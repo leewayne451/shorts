@@ -138,7 +138,11 @@ def run(
         "sceneStarts": scene_starts,
     }
     manifest_path = run_dir / "remotion_manifest.json"
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    # Root.tsx receives a props object shaped as {manifest: ...}; writing the
+    # envelope is required for Remotion to use the generated multi-scene script.
+    manifest_path.write_text(
+        json.dumps({"manifest": manifest}, ensure_ascii=False), encoding="utf-8"
+    )
     output = run_dir / "final.mp4"
     command = [
         npm, "run", "render", "--",
